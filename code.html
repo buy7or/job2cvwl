@@ -434,10 +434,30 @@
 </div>
 </footer>
 <script>
+    const WAITLIST_ENDPOINT = 'https://aj43qy3zeonqngu4j3w762q7f40ruoeu.lambda-url.eu-north-1.on.aws/api/waitlist';
     const waitlistForm = document.getElementById('waitlist-form');
     const waitlistEmail = document.getElementById('waitlist-email');
     const waitlistMessage = document.getElementById('waitlist-message');
     const waitlistTriggers = document.querySelectorAll('[data-waitlist-trigger]');
+    const waitlistSubmitButton = waitlistForm.querySelector('button[type="submit"]');
+    const waitlistSubmitButtonLabel = waitlistSubmitButton.textContent.trim();
+
+    function setWaitlistMessage(state, text) {
+        if (state) {
+            waitlistMessage.dataset.state = state;
+        } else {
+            delete waitlistMessage.dataset.state;
+        }
+
+        waitlistMessage.textContent = text;
+    }
+
+    function setWaitlistSubmitting(isSubmitting) {
+        waitlistSubmitButton.disabled = isSubmitting;
+        waitlistEmail.disabled = isSubmitting;
+        waitlistSubmitButton.setAttribute('aria-busy', String(isSubmitting));
+        waitlistSubmitButton.textContent = isSubmitting ? 'Joining...' : waitlistSubmitButtonLabel;
+    }
 
     waitlistTriggers.forEach((trigger) => {
         trigger.addEventListener('click', () => {
@@ -446,18 +466,43 @@
         });
     });
 
-    waitlistForm.addEventListener('submit', (event) => {
+    waitlistForm.addEventListener('submit', async (event) => {
         event.preventDefault();
 
         if (!waitlistForm.reportValidity()) {
-            waitlistMessage.dataset.state = 'error';
-            waitlistMessage.textContent = 'Please enter a valid email.';
+            setWaitlistMessage('error', 'Please enter a valid email.');
             return;
         }
 
-        waitlistMessage.dataset.state = 'success';
-        waitlistMessage.textContent = `Saved locally: ${waitlistEmail.value}. Next step is sending it to AWS.`;
-        waitlistForm.reset();
+        const email = waitlistEmail.value.trim();
+
+        if (!email) {
+            setWaitlistMessage('error', 'Please enter a valid email.');
+            return;
+        }
+
+        setWaitlistSubmitting(true);
+        setWaitlistMessage(null, '');
+
+        try {
+            // The Lambda URL accepts JSON in the body, but not a browser preflight on this path.
+            // Sending the JSON string as text/plain keeps the request simple enough for direct submission.
+            await fetch(WAITLIST_ENDPOINT, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'text/plain;charset=UTF-8',
+                },
+                body: JSON.stringify({ email }),
+            });
+
+            setWaitlistMessage('success', 'Request sent. If this email is new, it will be added. If it was already submitted, you are already on the waitlist.');
+            waitlistForm.reset();
+        } catch (error) {
+            setWaitlistMessage('error', 'We could not submit your email. Please try again.');
+        } finally {
+            setWaitlistSubmitting(false);
+        }
     });
 </script>
 </body></html>
